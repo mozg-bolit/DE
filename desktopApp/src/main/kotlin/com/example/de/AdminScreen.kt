@@ -10,130 +10,100 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
+/**
+ * Экран Администратора системы.
+ * Позволяет:
+ * 1. Просматривать список всех зарегистрированных пользователей.
+ * 2. Видеть текущий статус блокировки аккаунтов.
+ * 3. Создавать новых пользователей (роль "USER" по умолчанию).
+ * 4. Изменять существующие пароли пользователей.
+ * 5. Блокировать/разблокировать учетные записи вручную.
+ * 6. Удалять пользователей из системы.
+ */
 @Composable
 fun AdminScreen(onLogout: () -> Unit) {
+    // Хранит актуальный список пользователей для мгновенного обновления UI при CRUD-операциях
     var users by remember { mutableStateOf(DatabaseManager.getAllUsers()) }
+
+    // Состояния полей ввода формы добавления нового пользователя
     var newLogin by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
-    var statusMessage by remember { mutableStateOf<String?>(null) }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text(text = "Панель администратора", style = MaterialTheme.typography.h5)
+        Text("Панель администратора", style = MaterialTheme.typography.h5)
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 1. Форма добавления пользователя
-        Card(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-            backgroundColor = Color.LightGray.copy(alpha = 0.1f)
-        ) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                Text(text = "Добавить нового пользователя", style = MaterialTheme.typography.subtitle1)
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextField(value = newLogin, onValueChange = { newLogin = it }, label = { Text("Логин") })
-                    TextField(value = newPassword, onValueChange = { newPassword = it }, label = { Text("Пароль") })
-
-                    Button(onClick = {
-                        val added = DatabaseManager.addUser(newLogin, newPassword, "USER")
-                        if (added) {
-                            statusMessage = "Успешно создано!"
-                            users = DatabaseManager.getAllUsers()
-                            newLogin = ""
-                            newPassword = ""
-                        } else {
-                            statusMessage = "Ошибка создания!"
-                        }
-                    }) {
-                        Text(text = "Создать")
+        // ФОРМА ДОБАВЛЕНИЯ НОВОГО ПОЛЬЗОВАТЕЛЯ (Карточка)
+        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), backgroundColor = Color.LightGray.copy(alpha = 0.1f)) {
+            Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextField(value = newLogin, onValueChange = { newLogin = it }, label = { Text("Логин") }, modifier = Modifier.weight(1f))
+                TextField(value = newPassword, onValueChange = { newPassword = it }, label = { Text("Пароль") }, modifier = Modifier.weight(1f))
+                Button(onClick = {
+                    // Пробуем добавить пользователя в список БД
+                    if (DatabaseManager.addUser(newLogin, newPassword, "USER")) {
+                        users = DatabaseManager.getAllUsers() // Обновляем UI список
+                        newLogin = ""; newPassword = "" // Очищаем текстовые поля формы
                     }
-                }
-
-                statusMessage?.let { message ->
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(text = message, color = MaterialTheme.colors.primary)
-                }
+                }) { Text("Создать") }
             }
         }
 
-        // 2. Список пользователей
-        Text(text = "Список пользователей:", style = MaterialTheme.typography.subtitle1)
-        Spacer(modifier = Modifier.height(8.dp))
-
+        // ОПТИМИЗИРОВАННЫЙ СПИСОК ПОЛЬЗОВАТЕЛЕЙ (Аналог RecyclerView в XML)
         LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            items(users) { user ->
+            items(users) { user -> // Итерация по каждому пользователю в списке
                 Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), elevation = 2.dp) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Информация о пользователе и поле смены пароля
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(text = "${user.login} (${user.role})")
+                    Row(modifier = Modifier.padding(12.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
 
-                            val isBlocked = user.blocked
+                        // ЛЕВАЯ ЧАСТЬ: Информация о пользователе и форма редактирования пароля
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("${user.login} (${user.role})")
+                            // Динамическое отображение статуса блокировки цветом
                             Text(
-                                text = "Статус: ${if (isBlocked) "Заблокирован" else "Активен"}",
-                                color = if (isBlocked) Color.Red else Color(0xFF2E7D32)
+                                text = "Статус: ${if (user.blocked) "Заблокирован" else "Активен"}",
+                                color = if (user.blocked) Color.Red else Color(0xFF2E7D32)
                             )
 
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            // Упрощенное изменение пароля без лишних вложений
+                            // Поле быстрого изменения пароля внутри элемента списка
                             var editPassword by remember { mutableStateOf("") }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                TextField(
-                                    value = editPassword,
-                                    onValueChange = { editPassword = it },
-                                    label = { Text("Новый пароль") },
-                                    modifier = Modifier.width(140.dp)
-                                )
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
+                                TextField(value = editPassword, onValueChange = { editPassword = it }, label = { Text("Новый пароль") }, modifier = Modifier.width(130.dp))
                                 Button(onClick = {
                                     if (editPassword.isNotBlank()) {
-                                        DatabaseManager.updateUser(user.login) { it.password = editPassword }
-                                        users = DatabaseManager.getAllUsers()
-                                        editPassword = ""
+                                        // Вызов обновления пароля в DatabaseManager
+                                        DatabaseManager.updateUser(user.login) { u -> u.password = editPassword }
+                                        users = DatabaseManager.getAllUsers() // Обновляем интерфейс
                                     }
-                                }) {
-                                    Text(text = "Сменить", style = MaterialTheme.typography.caption)
-                                }
+                                }) { Text("ОК", style = MaterialTheme.typography.caption) }
                             }
                         }
 
-                        // Кнопки Блокировки и Удаления
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            val userBlocked = user.blocked
+                        // ПРАВАЯ ЧАСТЬ: Кнопки Управления Учетной Записью
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            // Кнопка Блокировки / Разблокировки
                             Button(
-                                colors = ButtonDefaults.buttonColors(
-                                    backgroundColor = if (userBlocked) Color.Green else Color.Red
-                                ),
+                                // Если заблокирован — кнопка Зеленая ("Разблок."), если активен — Красная ("Заблочить")
+                                colors = ButtonDefaults.buttonColors(backgroundColor = if (user.blocked) Color.Green else Color.Red),
                                 onClick = {
                                     DatabaseManager.updateUser(user.login) {
-                                        it.blocked = !it.blocked
-                                        if (!it.blocked) it.failedAttempts = 0
+                                        it.blocked = !it.blocked // Инвертируем флаг блокировки
+                                        if (!it.blocked) it.failedAttempts = 0 // Обязательный сброс ошибок при ручной разблокировке админом
                                     }
-                                    users = DatabaseManager.getAllUsers()
+                                    users = DatabaseManager.getAllUsers() // Синхронизируем UI список
                                 }
-                            ) {
-                                Text(text = if (userBlocked) "Разблок." else "Заблочить")
-                            }
+                            ) { Text(if (user.blocked) "Разблок." else "Заблочить") }
 
+                            // Кнопка Удаления пользователя
                             Button(onClick = {
                                 DatabaseManager.deleteUser(user.login)
-                                users = DatabaseManager.getAllUsers()
-                            }) {
-                                Text(text = "Удалить")
-                            }
+                                users = DatabaseManager.getAllUsers() // Синхронизируем UI список
+                            }) { Text("Удалить") }
                         }
                     }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = onLogout, modifier = Modifier.align(Alignment.End)) {
-            Text(text = "Выйти из панели")
-        }
+        // Кнопка разлогина (возврат на LoginScreen)
+        Button(onClick = onLogout, modifier = Modifier.align(Alignment.End)) { Text("Выйти") }
     }
 }
